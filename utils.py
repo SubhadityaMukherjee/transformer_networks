@@ -70,13 +70,19 @@ def predict(model, character, char2int, int2char, dict_size, device):
     character = torch.from_numpy(character)
     character = character.to(device)
 
-    out, hidden = model(character)
+    out = model(character)
+    # print("sh", out.shape)
+    prob = [nn.functional.softmax(out[j], dim=0).data for j in range(out.shape[0])]
+    char_ind = [int2char[torch.max(j, dim=0)[1].item()] for j in prob]
+    return "".join(char_ind)
 
-    prob = nn.functional.softmax(out[-1], dim=0).data
+    # prob = nn.functional.softmax(out[-1], dim=0).data
+
+    # print("sh",prob.shape)
     # Taking the class with the highest probability score from the output
-    char_ind = torch.max(prob, dim=0)[1].item()
+    # char_ind = torch.max(prob, dim=0)[1].item()
 
-    return int2char[char_ind], hidden
+    # return int2char[char_ind]
 
 
 #%%
@@ -84,21 +90,24 @@ def sample(model, out_len, start="hey", char2int=None, int2char=None, dict_size=
     model.eval()  # eval mode
     start = start.lower()
     # First off, run through the starting characters
-    chars = [ch for ch in start]
-    size = out_len - len(chars)
+    # chars = [ch for ch in start]
+    size = out_len
+    preds = ""
+
+    char = predict(model, list(start), char2int, int2char, dict_size, device)
     # Now pass in the previous characters and get a new one
     for ii in range(size):
-        char, h = predict(model, chars, char2int, int2char, dict_size, device)
-        chars.append(char)
-
-    return "".join(chars)
+        char = predict(model, list(char), char2int, int2char, dict_size, device)
+        # chars.extend(char)
+        preds += char
+    return f"{start} {preds[:out_len]}"
 
 def train_model(model, input_seq, target_seq, criterion, optimizer, device, epochs=100):
     pbar = tqdm(range(1, epochs + 1), total=epochs)
     for epoch in pbar:
         optimizer.zero_grad()  # Clears existing gradients from previous epoch
         # input_seq = input_seq.to(device)
-        output, hidden = model(input_seq)
+        output = model(input_seq)
         output = output.to(device)
         target_seq = target_seq.to(device)
         loss = criterion(output, target_seq.view(-1).long())
