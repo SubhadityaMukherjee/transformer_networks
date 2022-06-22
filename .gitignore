@@ -17,3 +17,5 @@ __pycache__/*
 *.csv
 tags
 *.txt
+saved_models/
+saved_models
