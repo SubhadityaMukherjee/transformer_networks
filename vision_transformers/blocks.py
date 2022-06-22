@@ -1,12 +1,4 @@
-import json
-import math
-import os
-from collections import defaultdict
-from functools import partial
-
 import matplotlib.pyplot as plt
-import numpy as np
-from PIL import Image
 
 plt.set_cmap("cividis")
 from IPython.display import set_matplotlib_formats
@@ -19,25 +11,10 @@ matplotlib.rcParams["lines.linewidth"] = 2.0
 import seaborn as sns
 
 sns.reset_orig()
-import urllib.request
-from urllib.error import HTTPError
 
-import flax
-import jax
-import jax.numpy as jnp
-import optax
-import torch
-import torch.utils.data as data
-import torchvision
 from flax import linen as nn
-from flax.training import checkpoints, train_state
-from jax import random
-from torch.utils.tensorboard import SummaryWriter
-from torchvision import transforms
-from torchvision.datasets import CIFAR10
-from tqdm import tqdm
-
 from utils import *
+
 
 class AttentionBlock(nn.Module):
     embed_dim: int
@@ -71,4 +48,3 @@ class AttentionBlock(nn.Module):
             )
         x = x + self.dropout(linear_out, deterministic=not train)
         return x
-

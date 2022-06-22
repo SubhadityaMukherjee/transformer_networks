@@ -1,12 +1,4 @@
-import json
-import math
-import os
-from collections import defaultdict
-from functools import partial
-
 import matplotlib.pyplot as plt
-import numpy as np
-from PIL import Image
 
 plt.set_cmap("cividis")
 from IPython.display import set_matplotlib_formats
@@ -19,26 +11,13 @@ matplotlib.rcParams["lines.linewidth"] = 2.0
 import seaborn as sns
 
 sns.reset_orig()
-import urllib.request
-from urllib.error import HTTPError
 
-import flax
-import jax
 import jax.numpy as jnp
-import optax
-import torch
-import torch.utils.data as data
-import torchvision
 from flax import linen as nn
-from flax.training import checkpoints, train_state
-from jax import random
-from torch.utils.tensorboard import SummaryWriter
-from torchvision import transforms
-from torchvision.datasets import CIFAR10
-from tqdm import tqdm
 from blocks import *
 
 from utils import *
+
 
 class VisionTransformer(nn.Module):
     embed_dim: int
@@ -60,13 +39,11 @@ class VisionTransformer(nn.Module):
             )
             for _ in range(self.num_layers)
         ]
-        self.mlp_head = nn.Sequential(
-            [nn.LayerNorm(), nn.Dense(self.num_classes)])
+        self.mlp_head = nn.Sequential([nn.LayerNorm(), nn.Dense(self.num_classes)])
         self.dropout = nn.Dropout(self.dropout_prob)
 
         self.cls_token = self.param(
-            "cls_token", nn.initializers.normal(
-                stddev=1.0), (1, 1, self.embed_dim)
+            "cls_token", nn.initializers.normal(stddev=1.0), (1, 1, self.embed_dim)
         )
         self.pos_embedding = self.param(
             "pos_embedding",

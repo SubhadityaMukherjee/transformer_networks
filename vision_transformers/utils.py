@@ -1,13 +1,9 @@
-import json
-import math
 import os
 import random
 from collections import defaultdict
-from functools import partial
 
 import matplotlib.pyplot as plt
 import numpy as np
-from PIL import Image
 
 plt.set_cmap("cividis")
 from IPython.display import set_matplotlib_formats
@@ -20,22 +16,12 @@ matplotlib.rcParams["lines.linewidth"] = 2.0
 import seaborn as sns
 
 sns.reset_orig()
-import urllib.request
-from urllib.error import HTTPError
-
-import flax
 import jax
-import jax.numpy as jnp
 import optax
 import torch
-import torch.utils.data as data
-import torchvision
-from flax import linen as nn
 from flax.training import checkpoints, train_state
 from jax import random
 from torch.utils.tensorboard import SummaryWriter
-from torchvision import transforms
-from torchvision.datasets import CIFAR10
 from tqdm import tqdm
 
 
@@ -47,6 +33,7 @@ def numpy_collate(batch):
         return [numpy_collate(samples) for samples in transposed]
     else:
         return np.array(batch)
+
 
 def img_to_patch(x, patch_size, flatten_channels=True):
     """
@@ -64,14 +51,25 @@ def img_to_patch(x, patch_size, flatten_channels=True):
         x = x.reshape(B, x.shape[1], -1)  # [B, H'*W', p_H*p_W*C]
     return x
 
+
 def numpy_to_torch(array):
     array = jax.device_get(array)
     tensor = torch.from_numpy(array)
     tensor = tensor.permute(0, 3, 1, 2)
     return tensor
 
+
 class TrainerModule:
-    def __init__(self, model, CHECKPOINT_PATH, exmp_imgs, lr=1e-3, weight_decay=0.01, seed=42, **model_hparams):
+    def __init__(
+        self,
+        model,
+        CHECKPOINT_PATH,
+        exmp_imgs,
+        lr=1e-3,
+        weight_decay=0.01,
+        seed=42,
+        **model_hparams
+    ):
         """
         Module for summarizing all training functionalities for classification on CIFAR10.
 
@@ -100,8 +98,7 @@ class TrainerModule:
     def create_functions(self):
         def calculate_loss(params, rng, batch, train):
             imgs, labels = batch
-            labels_onehot = jax.nn.one_hot(
-                labels, num_classes=self.model.num_classes)
+            labels_onehot = jax.nn.one_hot(labels, num_classes=self.model.num_classes)
             rng, dropout_apply_rng = random.split(rng)
             logits = self.model.apply(
                 {"params": params},
@@ -114,8 +111,8 @@ class TrainerModule:
             return loss, (acc, rng)
 
         def train_step(state, rng, batch):
-            def loss_fn(params): return calculate_loss(
-                params, rng, batch, train=True)
+            def loss_fn(params):
+                return calculate_loss(params, rng, batch, train=True)
 
             (loss, (acc, rng)), grads = jax.value_and_grad(loss_fn, has_aux=True)(
                 state.params
@@ -126,8 +123,7 @@ class TrainerModule:
 
         def eval_step(state, rng, batch):
 
-            _, (acc, rng) = calculate_loss(
-                state.params, rng, batch, train=False)
+            _, (acc, rng) = calculate_loss(state.params, rng, batch, train=False)
             return rng, acc
 
         self.train_step = jax.jit(train_step)
@@ -171,8 +167,7 @@ class TrainerModule:
             self.train_epoch(epoch=epoch_idx)
             if epoch_idx % 2 == 0:
                 eval_acc = self.eval_model(val_loader)
-                self.logger.add_scalar(
-                    "val/acc", eval_acc, global_step=epoch_idx)
+                self.logger.add_scalar("val/acc", eval_acc, global_step=epoch_idx)
                 if eval_acc >= best_eval:
                     best_eval = eval_acc
                     self.save_model(step=epoch_idx)
@@ -207,11 +202,10 @@ class TrainerModule:
             ckpt_dir=self.log_dir, target=self.state.params, step=step, overwrite=True
         )
 
-    def load_model(self, name= "ViT.ckpt", pretrained=False):
+    def load_model(self, name="ViT.ckpt", pretrained=False):
 
         if not pretrained:
-            params = checkpoints.restore_checkpoint(
-                ckpt_dir=self.log_dir, target=None)
+            params = checkpoints.restore_checkpoint(ckpt_dir=self.log_dir, target=None)
         else:
             params = checkpoints.restore_checkpoint(
                 ckpt_dir=os.path.join(self.CHECKPOINT_PATH, name), target=None
@@ -222,6 +216,5 @@ class TrainerModule:
             tx=self.state.tx if self.state else optax.adamw(self.lr),
         )
 
-    def checkpoint_exists(self, name = "ViT.ckpt"):
+    def checkpoint_exists(self, name="ViT.ckpt"):
         return os.path.isfile(os.path.join(self.CHECKPOINT_PATH, name))
-

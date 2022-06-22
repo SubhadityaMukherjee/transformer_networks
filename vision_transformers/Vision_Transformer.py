@@ -3,35 +3,21 @@
 from models import *
 from blocks import *
 from utils import *
-from tqdm import tqdm
-from torchvision.datasets import CIFAR10
+from torchvision.datasets import *
 from torchvision import transforms
-from torch.utils.tensorboard import SummaryWriter
 from jax import random
-from flax.training import checkpoints, train_state
-from flax import linen as nn
 import torchvision
 import torch.utils.data as data
 import torch
-import optax
-import jax.numpy as jnp
 import jax
-import flax
-from urllib.error import HTTPError
-import urllib.request
 import seaborn as sns
 from matplotlib.colors import to_rgb
 import matplotlib
 from IPython.display import set_matplotlib_formats
-import json
-import math
 import os
-from collections import defaultdict
-from functools import partial
 
 import matplotlib.pyplot as plt
 import numpy as np
-from PIL import Image
 
 plt.set_cmap("cividis")
 
@@ -67,15 +53,15 @@ test_transform = image_to_numpy
 train_transform = transforms.Compose(
     [
         transforms.RandomHorizontalFlip(),
-        transforms.RandomResizedCrop(
-            (32, 32), scale=(0.8, 1.0), ratio=(0.9, 1.1)),
+        transforms.RandomResizedCrop((32, 32), scale=(0.8, 1.0), ratio=(0.9, 1.1)),
         image_to_numpy,
     ]
 )
-train_dataset = CIFAR10(
+ds_name = CIFAR10
+train_dataset = ds_name(
     root=DATASET_PATH, train=True, transform=train_transform, download=True
 )
-val_dataset = CIFAR10(
+val_dataset = ds_name(
     root=DATASET_PATH, train=True, transform=test_transform, download=True
 )
 train_set, _ = torch.utils.data.random_split(
@@ -85,7 +71,7 @@ _, val_set = torch.utils.data.random_split(
     val_dataset, [45000, 5000], generator=torch.Generator().manual_seed(42)
 )
 
-test_set = CIFAR10(
+test_set = ds_name(
     root=DATASET_PATH, train=False, transform=test_transform, download=True
 )
 # %%
@@ -152,8 +138,7 @@ plt.close()
 
 main_rng, x_rng = random.split(main_rng)
 x = random.normal(x_rng, (3, 16, 128))
-attnblock = AttentionBlock(
-    embed_dim=128, hidden_dim=512, num_heads=4, dropout_prob=0.1)
+attnblock = AttentionBlock(embed_dim=128, hidden_dim=512, num_heads=4, dropout_prob=0.1)
 main_rng, init_rng, dropout_init_rng = random.split(main_rng, 3)
 params = attnblock.init({"params": init_rng, "dropout": dropout_init_rng}, x, True)[
     "params"
@@ -193,6 +178,7 @@ print("Out", out.shape)
 del visntrans, params
 #%%
 
+
 def train_model(*args, num_epochs=200, retrain=False, **kwargs):
     trainer = TrainerModule(*args, **kwargs)
     if not trainer.checkpoint_exists() or retrain == True:
@@ -221,7 +207,7 @@ model, results = train_model(
     lr=3e-4,
     retrain=True,
     num_epochs=2,
-    CHECKPOINT_PATH = CHECKPOINT_PATH, 
-    model = VisionTransformer, 
+    CHECKPOINT_PATH=CHECKPOINT_PATH,
+    model=VisionTransformer,
 )
 print("ViT results", results)
