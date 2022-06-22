@@ -69,7 +69,10 @@ class LSTM(nn.Module):
         except:
             pass
         # print(out.shape)
-        out = out.contiguous().view(-1, self.hidden_size)
+        # out = out.contiguous().view(-1, self.hidden_size)
+        # out = outs[-1].squeeze()
+        # out = out.contiguous().view(-1, self.hidden_size)
+
         out = self.fc(out)
 
         return out
