@@ -119,7 +119,7 @@ plt.figure(figsize=(8, 8))
 plt.title("Image examples of the CIFAR10 dataset")
 plt.imshow(img_grid)
 plt.axis("off")
-plt.savefig("outputs/image-examples.png")
+plt.savefig("outputs/image-examples.png", dpi = 200)
 plt.close()
 # %%
 
@@ -136,58 +136,10 @@ for i in range(CIFAR_images.shape[0]):
     ax[i].axis("off")
 #  plt.show()
 
-plt.savefig("outputs/patches.png")
+plt.savefig("outputs/patches.png", dpi = 200)
 plt.close()
 
-# %%
-<<<<<<< HEAD
-
-main_rng, x_rng = random.split(main_rng)
-x = random.normal(x_rng, (3, 16, 128))
-attnblock = AttentionBlock(embed_dim=128, hidden_dim=512, num_heads=4, dropout_prob=0.1)
-main_rng, init_rng, dropout_init_rng = random.split(main_rng, 3)
-params = attnblock.init({"params": init_rng, "dropout": dropout_init_rng}, x, True)[
-    "params"
-]
-main_rng, dropout_apply_rng = random.split(main_rng)
-out = attnblock.apply(
-    {"params": params}, x, train=True, rngs={"dropout": dropout_apply_rng}
-)
-print("Out", out.shape)
-
-del attnblock, params
-#%%
-
-main_rng, x_rng = random.split(main_rng)
-x = random.normal(x_rng, (5, 32, 32, 3))
-visntrans = VisionTransformer(
-    embed_dim=128,
-    hidden_dim=512,
-    num_heads=4,
-    num_channels=3,
-    num_layers=6,
-    num_classes=10,
-    patch_size=4,
-    num_patches=64,
-    dropout_prob=0.1,
-)
-main_rng, init_rng, dropout_init_rng = random.split(main_rng, 3)
-params = visntrans.init({"params": init_rng, "dropout": dropout_init_rng}, x, True)[
-    "params"
-]
-main_rng, dropout_apply_rng = random.split(main_rng)
-out = visntrans.apply(
-    {"params": params}, x, train=True, rngs={"dropout": dropout_apply_rng}
-)
-print("Out", out.shape)
-
-del visntrans, params
-#%%
-
-
-=======
 # ACTUAL TRAINING
->>>>>>> 8f4c236 (up)
 def train_model(*args, num_epochs=200, retrain=False, **kwargs):
     trainer = TrainerModule(*args, **kwargs)
     if not trainer.checkpoint_exists() or retrain == True:
