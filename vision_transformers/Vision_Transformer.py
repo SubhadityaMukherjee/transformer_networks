@@ -1,5 +1,6 @@
 # Mostly from https://uvadlc-notebooks.readthedocs.io/en/latest/tutorial_notebooks/JAX/tutorial15/Vision_Transformer.html
 # %%
+# LOADING EVERYTHING
 from models import *
 from blocks import *
 from utils import *
@@ -29,7 +30,7 @@ sns.reset_orig()
 
 
 # %%
-# Setting up defaults
+# SETTING UP DEFAULTS
 DATASET_PATH = "/media/hdd/Datasets"
 CHECKPOINT_PATH = "saved_models/viTJax"
 
@@ -41,7 +42,7 @@ DATA_MEANS = np.array([0.49139968, 0.48215841, 0.44653091])
 DATA_STD = np.array([0.24703223, 0.24348513, 0.26158784])
 # %%
 
-
+# DATA TRANSFORMS
 def image_to_numpy(img):
     img = np.array(img, dtype=np.float32)
     img = (img / 255.0 - DATA_MEANS) / DATA_STD
@@ -75,6 +76,7 @@ test_set = ds_name(
     root=DATASET_PATH, train=False, transform=test_transform, download=True
 )
 # %%
+# DATA LOADERS
 batch_size = 128
 
 train_loader = data.DataLoader(
@@ -105,6 +107,7 @@ test_loader = data.DataLoader(
     persistent_workers=True,
 )
 # %%
+# VISUALIZING THINGS
 NUM_IMAGES = 4
 CIFAR_images = np.stack([val_set[idx][0] for idx in range(NUM_IMAGES)], axis=0)
 img_grid = torchvision.utils.make_grid(
@@ -116,7 +119,7 @@ plt.figure(figsize=(8, 8))
 plt.title("Image examples of the CIFAR10 dataset")
 plt.imshow(img_grid)
 plt.axis("off")
-plt.show()
+plt.savefig("outputs/image-examples.png")
 plt.close()
 # %%
 
@@ -131,10 +134,13 @@ for i in range(CIFAR_images.shape[0]):
     img_grid = img_grid.permute(1, 2, 0)
     ax[i].imshow(img_grid)
     ax[i].axis("off")
-plt.show()
+#  plt.show()
+
+plt.savefig("outputs/patches.png")
 plt.close()
 
 # %%
+<<<<<<< HEAD
 
 main_rng, x_rng = random.split(main_rng)
 x = random.normal(x_rng, (3, 16, 128))
@@ -179,6 +185,9 @@ del visntrans, params
 #%%
 
 
+=======
+# ACTUAL TRAINING
+>>>>>>> 8f4c236 (up)
 def train_model(*args, num_epochs=200, retrain=False, **kwargs):
     trainer = TrainerModule(*args, **kwargs)
     if not trainer.checkpoint_exists() or retrain == True:

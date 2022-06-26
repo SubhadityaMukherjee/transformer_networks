@@ -9,8 +9,6 @@ __pycache__/*
 *.pyc
 *.pt
 *.mp4
-*.png
-*.jpg
 *.pkl
 *.ckpt
 *.yaml
@@ -19,3 +17,6 @@ tags
 *.txt
 saved_models/
 saved_models
+glove*
+*word2vec
+
