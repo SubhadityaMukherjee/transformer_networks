@@ -5,6 +5,8 @@
 - Fully in Pytorch so far. Jax might be added at some point
 - Tested on the tiny-shakespeare dataset.
 - Further notes can be found at [my_blog](https://subhadityamukherjee.github.io/AI-knowledge-base/#Basic%20RNN%20Architectures/#basic-rnn-architectures)
+# TALK!
+- If you are coming from the TFUG Talk on Jun27th 2022 , open vision_transformers/talk for the notebook/slides
 
 # How to run?
 - Just see runner.py 
