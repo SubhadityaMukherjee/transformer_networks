@@ -29,9 +29,10 @@ class VisionTransformer(nn.Module):
     patch_size: int
     num_patches: int
     dropout_prob: float = 0.0
+    raw_attentions: list
 
     def setup(self):
-
+        self.raw_attentions = [0.0]
         self.input_layer = nn.Dense(self.embed_dim)
         self.transformer = [
             AttentionBlock(
@@ -63,7 +64,8 @@ class VisionTransformer(nn.Module):
 
         x = self.dropout(x, deterministic=not train)
         for attn_block in self.transformer:
-            x = attn_block(x, train=train)
+            x,raw_sc = attn_block(x, train=train)
+            self.raw_attentions.append(raw_sc)
 
         cls = x[:, 0]
         out = self.mlp_head(cls)
