@@ -1,4 +1,0 @@
-- Implement the tokenizers and all that jazz from https://github.com/hyunwoongko/transformer
-- Make sure all the archs are working
-- mlcollectoions maybe? for params
-- More types of attentions https://github.com/sooftware/attentions

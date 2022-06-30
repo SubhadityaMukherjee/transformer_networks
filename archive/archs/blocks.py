@@ -136,12 +136,14 @@ class GRUCell(nn.Module):
 
         return hy
 
+
 class PositionalEncoding(nn.Module):
     """
     compute sinusoid encoding.
     $$PE(pos, 2i) = sin(\frac{pos}{10000^\frac{2i}{d_{model}}})$$
     $$PE(pos, 2i+1) = cos(\frac{pos}{10000^\frac{2i}{d_{model}}})$$
     """
+
     def __init__(self, d_model, max_len, device):
         """
         constructor of sinusoid encoding class
@@ -175,7 +177,7 @@ class PositionalEncoding(nn.Module):
 
         return self.encoding[:seq_len, :]
         # [seq_len = 30, d_model = 512]
-        # it will add with tok_emb : [128, 30, 512]         
+        # it will add with tok_emb : [128, 30, 512]
 
 
 class LayerNorm(nn.Module):
@@ -188,7 +190,7 @@ class LayerNorm(nn.Module):
     def forward(self, x):
         mean = x.mean(-1, keepdim=True)
         std = x.std(-1, keepdim=True)
-        # '-1' means last dimension. 
+        # '-1' means last dimension.
 
         out = (x - mean) / (std + self.eps)
         out = self.gamma * out + self.beta
@@ -196,7 +198,6 @@ class LayerNorm(nn.Module):
 
 
 class PositionwiseFeedForward(nn.Module):
-
     def __init__(self, d_model, hidden, drop_prob=0.1):
         super(PositionwiseFeedForward, self).__init__()
         self.linear1 = nn.Linear(d_model, hidden)
@@ -210,6 +211,7 @@ class PositionwiseFeedForward(nn.Module):
         x = self.dropout(x)
         x = self.linear2(x)
         return x
+
 
 class PostionalEncoding(nn.Module):
     """
@@ -251,6 +253,7 @@ class PostionalEncoding(nn.Module):
         return self.encoding[:seq_len, :]
         # [seq_len = 30, d_model = 512]
         # it will add with tok_emb : [128, 30, 512]
+
 
 class TokenEmbedding(nn.Embedding):
     """

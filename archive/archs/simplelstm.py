@@ -5,6 +5,7 @@ from torch.autograd import Variable
 
 from .blocks import *
 
+
 class LSTM(nn.Module):
     def __init__(self, input_size, hidden_size, num_layers, bias, output_size):
         super(LSTM, self).__init__()
@@ -21,8 +22,8 @@ class LSTM(nn.Module):
         )
         self.rnn_cell_list.extend(
             [
-                LSTMCell(self.hidden_size, self.hidden_size, self.bias) for l in range(1, self.num_layers)
-
+                LSTMCell(self.hidden_size, self.hidden_size, self.bias)
+                for l in range(1, self.num_layers)
             ]
         )
 
@@ -48,7 +49,9 @@ class LSTM(nn.Module):
 
         outs = []
 
-        hidden = [(h0[layer, :, :], h0[layer, :, :]) for layer in range(self.num_layers)]
+        hidden = [
+            (h0[layer, :, :], h0[layer, :, :]) for layer in range(self.num_layers)
+        ]
 
         for t in range(input.size(1)):
             for layer in range(self.num_layers):

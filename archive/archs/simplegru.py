@@ -21,8 +21,8 @@ class GRU(nn.Module):
         self.rnn_cell_list.append(GRUCell(self.input_size, self.hidden_size, self.bias))
         self.rnn_cell_list.extend(
             [
-
-                GRUCell(self.hidden_size, self.hidden_size, self.bias) for l in range(1, self.num_layers)
+                GRUCell(self.hidden_size, self.hidden_size, self.bias)
+                for l in range(1, self.num_layers)
             ]
         )
         self.fc = nn.Linear(self.hidden_size, self.output_size)

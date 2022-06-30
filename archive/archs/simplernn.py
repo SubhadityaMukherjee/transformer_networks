@@ -5,6 +5,7 @@ from torch.autograd import Variable
 
 from .blocks import *
 
+
 class SimpleRNN(nn.Module):
     def __init__(
         self, input_size, hidden_size, num_layers, bias, output_size, activation="tanh"
@@ -24,16 +25,17 @@ class SimpleRNN(nn.Module):
             raise ValueError("Invalid activation.")
 
         self.fc = nn.Linear(self.hidden_size, self.output_size)
-    
+
     def create_list(self):
         self.rnn_cell_list.append(
-                RNNCell(self.input_size, self.hidden_size, self.bias, self.activation)
-            )
+            RNNCell(self.input_size, self.hidden_size, self.bias, self.activation)
+        )
         self.rnn_cell_list.extend(
-                [
-                    RNNCell(self.hidden_size, self.hidden_size, self.bias, self.activation) for l in range(1, self.num_layers)
-                ]
-            )
+            [
+                RNNCell(self.hidden_size, self.hidden_size, self.bias, self.activation)
+                for l in range(1, self.num_layers)
+            ]
+        )
 
     def forward(self, input, hx=None):
 
@@ -65,7 +67,7 @@ class SimpleRNN(nn.Module):
                         hidden[layer - 1], hidden[layer]
                     )
                 hidden[layer] = hidden_l
-#
+            #
             outs.append(hidden_l)
 
         out = torch.stack([x.squeeze() for x in outs])
