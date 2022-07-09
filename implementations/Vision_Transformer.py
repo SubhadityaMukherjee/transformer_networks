@@ -2,28 +2,32 @@
 # Mostly from https://uvadlc-notebooks.readthedocs.io/en/latest/tutorial_notebooks/JAX/tutorial15/Vision_Transformer.html
 # +
 # LOADING EVERYTHING
+
+# specific snippet to load the networks
+from torch.utils.data.sampler import SubsetRandomSampler
+import numpy as np
+import matplotlib.pyplot as plt
+from tqdm.notebook import tqdm
 import os
 from pathlib import Path
-
-import jax
+from IPython.display import set_matplotlib_formats
 import matplotlib
-import matplotlib.pyplot as plt
-import numpy as np
+from matplotlib.colors import to_rgb
 import seaborn as sns
+import jax
+import flax
 import torch
+import optax
 import torch.utils.data as data
 import torchvision
-from IPython.display import set_matplotlib_formats
 from jax import random
-from matplotlib.colors import to_rgb
-from torch.utils.data.sampler import SubsetRandomSampler
 from torchvision import transforms
 from torchvision.datasets import *
-from tqdm.notebook import tqdm
+from blocks.utils import *
+from blocks.attention import *
+from PIL import Image
+import argparse as ap
 
-from src.blocks import *
-from src.models import *
-from src.utils import *
 
 plt.set_cmap("cividis")
 
@@ -33,6 +37,12 @@ matplotlib.rcParams["lines.linewidth"] = 2.0
 
 sns.reset_orig()
 
+# Argument setup
+ag = ap.ArgumentParser()
+ag.add_argument("-e", type=int, default=1, help="No of epochs")
+ag.add_argument("-lr", type=float, default=3e-4, help="No of epochs")
+ag.add_argument("-load", action="store_true", help="Load saved objects")
+args = ag.parse_args()
 
 # +
 # SETTING UP DEFAULTS
@@ -64,12 +74,19 @@ train_transform = transforms.Compose(
     ]
 )
 ds_name = CIFAR10
-train_dataset = ds_name(
-    root=DATASET_PATH, train=True, transform=train_transform, download=True
-)
-val_dataset = ds_name(
-    root=DATASET_PATH, train=True, transform=test_transform, download=True
-)
+if not args.load:
+
+    train_dataset = ds_name(
+        root=DATASET_PATH, train=True, transform=train_transform, download=True
+    )
+    write_pickle(train_dataset, "trainds")
+    val_dataset = ds_name(
+        root=DATASET_PATH, train=True, transform=test_transform, download=True
+    )
+    write_pickle(val_dataset, "valds")
+else:
+    train_dataset = read_pickle("trainds")
+    val_dataset = read_pickle("valds")
 # +
 num_train = len(train_dataset)
 indices = list(range(num_train))
@@ -123,52 +140,57 @@ test_loader = data.DataLoader(
 )
 # +
 # VISUALIZING THINGS
-if not Path.exists(Path("outputs")):
-    os.mkdir("outputs")
-NUM_IMAGES = 4
-CIFAR_images = np.stack([test_set[idx][0] for idx in range(NUM_IMAGES)], axis=0)
-img_grid = torchvision.utils.make_grid(
-    numpy_to_torch(CIFAR_images), nrow=4, normalize=True, pad_value=0.9
-)
-img_grid = img_grid.permute(1, 2, 0)
-
-plt.figure(figsize=(8, 8))
-plt.title("Image examples of the CIFAR10 dataset")
-plt.imshow(img_grid)
-plt.axis("off")
-plt.savefig("outputs/ViT-image-examples.png", dpi=200)
-plt.close()
-# +
-img_patches = img_to_patch(CIFAR_images, patch_size=4, flatten_channels=False)
-
-fig, ax = plt.subplots(CIFAR_images.shape[0], 1, figsize=(14, 3))
-fig.suptitle("Images as input sequences of patches")
-for i in range(CIFAR_images.shape[0]):
-    img_grid = torchvision.utils.make_grid(
-        numpy_to_torch(img_patches[i]), nrow=64, normalize=True, pad_value=0.9
-    )
-    img_grid = img_grid.permute(1, 2, 0)
-    ax[i].imshow(img_grid)
-    ax[i].axis("off")
-#  plt.show()
-
-plt.savefig("outputs/ViT-patches.png", dpi=200)
-plt.close()
-
+#  if not Path.exists(Path("outputs")):
+#      os.mkdir("outputs")
+#  NUM_IMAGES = 4
+#  CIFAR_images = np.stack([test_set[idx][0]
+#                          for idx in range(NUM_IMAGES)], axis=0)
+#  img_grid = torchvision.utils.make_grid(
+#      numpy_to_torch(CIFAR_images), nrow=4, normalize=True, pad_value=0.9
+#  )
+#  img_grid = img_grid.permute(1, 2, 0)
+#
+#  plt.figure(figsize=(8, 8))
+#  plt.title("Image examples of the CIFAR10 dataset")
+#  plt.imshow(img_grid)
+#  plt.axis("off")
+#  plt.savefig("outputs/ViT-image-examples.png", dpi=200)
+#  plt.close()
+#
+#  img_patches = img_to_patch(CIFAR_images, patch_size=4, flatten_channels=False)
+#
+#  fig, ax = plt.subplots(CIFAR_images.shape[0], 1, figsize=(14, 3))
+#  fig.suptitle("Images as input sequences of patches")
+#  for i in range(CIFAR_images.shape[0]):
+#      img_grid = torchvision.utils.make_grid(
+#          numpy_to_torch(img_patches[i]), nrow=64, normalize=True, pad_value=0.9
+#      )
+#      img_grid = img_grid.permute(1, 2, 0)
+#      ax[i].imshow(img_grid)
+#      ax[i].axis("off")
+#
+#  plt.savefig("outputs/ViT-patches.png", dpi=200)
+#  plt.close()
+#
 
 # -
+
+
+class TrainState(train_state.TrainState):
+    # A simple extension of TrainState to also include batch statistics
+    batch_stats: Any
 
 
 class TrainerModule:
     def __init__(
         self,
-        model,
-        CHECKPOINT_PATH,
         exmp_imgs,
         lr=1e-3,
         weight_decay=0.01,
         seed=42,
-        **model_hparams
+        num_epochs=1,
+        model=None,
+        **model_hparams,
     ):
         """
         Module for summarizing all training functionalities for classification on CIFAR10.
@@ -181,23 +203,22 @@ class TrainerModule:
         """
         super().__init__()
         self.lr = lr
+        self.num_epochs = num_epochs
         self.weight_decay = weight_decay
         self.seed = seed
         self.rng = jax.random.PRNGKey(self.seed)
-
+        # Create empty model. Note: no parameters yet
         self.model = model(**model_hparams)
-        self.CHECKPOINT_PATH = CHECKPOINT_PATH
-
-        self.log_dir = os.path.join(self.CHECKPOINT_PATH, "logs")
+        # Prepare logging
+        self.log_dir = os.path.join(CHECKPOINT_PATH, "ViT/")
         self.logger = SummaryWriter(log_dir=self.log_dir)
-
+        # Create jitted training and eval functions
         self.create_functions()
-
+        # Initialize model
         self.init_model(exmp_imgs)
-        self.loss_log = []
-        self.metric_log = []
 
     def create_functions(self):
+        # Function to calculate the classification loss and accuracy for a model
         def calculate_loss(params, rng, batch, train):
             imgs, labels = batch
             labels_onehot = jax.nn.one_hot(labels, num_classes=self.model.num_classes)
@@ -212,27 +233,33 @@ class TrainerModule:
             acc = (logits.argmax(axis=-1) == labels).mean()
             return loss, (acc, rng)
 
+        # Training function
+
         def train_step(state, rng, batch):
             def loss_fn(params):
                 return calculate_loss(params, rng, batch, train=True)
 
+            # Get loss, gradients for loss, and other outputs of loss function
             (loss, (acc, rng)), grads = jax.value_and_grad(loss_fn, has_aux=True)(
                 state.params
             )
-
+            # Update parameters and batch statistics
             state = state.apply_gradients(grads=grads)
             return state, rng, loss, acc
 
-        def eval_step(state, rng, batch):
+        # Eval function
 
+        def eval_step(state, rng, batch):
+            # Return the accuracy for a single batch
             _, (acc, rng) = calculate_loss(state.params, rng, batch, train=False)
             return rng, acc
 
+        # jit for efficiency
         self.train_step = jax.jit(train_step)
         self.eval_step = jax.jit(eval_step)
 
     def init_model(self, exmp_imgs):
-
+        # Initialize model
         self.rng, init_rng, dropout_init_rng = random.split(self.rng, 3)
         self.init_params = self.model.init(
             {"params": init_rng, "dropout": dropout_init_rng}, exmp_imgs, train=True
@@ -240,7 +267,7 @@ class TrainerModule:
         self.state = None
 
     def init_optimizer(self, num_epochs, num_steps_per_epoch):
-
+        # We decrease the learning rate by a factor of 0.1 after 60% and 85% of the training
         lr_schedule = optax.piecewise_constant_schedule(
             init_value=self.lr,
             boundaries_and_scales={
@@ -252,37 +279,33 @@ class TrainerModule:
             optax.clip_by_global_norm(1.0),  # Clip gradients at norm 1
             optax.adamw(lr_schedule, weight_decay=self.weight_decay),
         )
-
+        # Initialize training state
         self.state = train_state.TrainState.create(
             apply_fn=self.model.apply,
             params=self.init_params if self.state is None else self.state.params,
             tx=optimizer,
         )
 
-    def train_model(
-        self, train_loader, val_loader, num_epochs=200, graph_progress=None
-    ):
-        self.train_loader = train_loader
-
-        self.init_optimizer(num_epochs, len(self.train_loader))
-
+    def train_model(self, train_loader, val_loader):
+        # Train model for defined number of epochs
+        # We first need to create optimizer and the scheduler for the given number of epochs
+        self.init_optimizer(self.num_epochs, len(train_loader))
+        # Track best eval accuracy
         best_eval = 0.0
-        tq = tqdm(range(1, num_epochs + 1))
-        for epoch_idx in tq:
+        for epoch_idx in tqdm(range(1, self.num_epochs + 1)):
             self.train_epoch(epoch=epoch_idx)
             if epoch_idx % 2 == 0:
                 eval_acc = self.eval_model(val_loader)
                 self.logger.add_scalar("val/acc", eval_acc, global_step=epoch_idx)
-                tq.set_postfix({"val/acc": eval_acc})
                 if eval_acc >= best_eval:
                     best_eval = eval_acc
                     self.save_model(step=epoch_idx)
                 self.logger.flush()
 
     def train_epoch(self, epoch):
-
+        # Train model for one epoch, and log avg loss and accuracy
         metrics = defaultdict(list)
-        for batch in tqdm(self.train_loader, desc="Training", leave=False):
+        for batch in tqdm(train_loader, desc="Training", leave=False):
             self.state, self.rng, loss, acc = self.train_step(
                 self.state, self.rng, batch
             )
@@ -293,7 +316,7 @@ class TrainerModule:
             self.logger.add_scalar("train/" + key, avg_val, global_step=epoch)
 
     def eval_model(self, data_loader):
-
+        # Test model on all images of a data loader and return avg loss
         correct_class, count = 0, 0
         for batch in data_loader:
             self.rng, acc = self.eval_step(self.state, self.rng, batch)
@@ -303,44 +326,38 @@ class TrainerModule:
         return eval_acc
 
     def save_model(self, step=0):
-
+        # Save current model at certain training iteration
         checkpoints.save_checkpoint(
             ckpt_dir=self.log_dir, target=self.state.params, step=step, overwrite=True
         )
 
-    def load_model(self, name="ViT.ckpt", pretrained=False):
-
+    def load_model(self, pretrained=False):
+        # Load model. We use different checkpoint for pretrained models
         if not pretrained:
             params = checkpoints.restore_checkpoint(ckpt_dir=self.log_dir, target=None)
         else:
             params = checkpoints.restore_checkpoint(
-                ckpt_dir=os.path.join(self.CHECKPOINT_PATH, name), target=None
+                ckpt_dir=os.path.join(CHECKPOINT_PATH, f"ViT.ckpt"), target=None
             )
         self.state = train_state.TrainState.create(
             apply_fn=self.model.apply,
             params=params,
-            tx=self.state.tx if self.state else optax.adamw(self.lr),
+            tx=self.state.tx
+            if self.state
+            else optax.adamw(self.lr),  # Default optimizer
         )
 
-    def checkpoint_exists(self, name="ViT.ckpt"):
-        return os.path.isfile(os.path.join(self.CHECKPOINT_PATH, name))
+    def checkpoint_exists(self):
+        # Check whether a pretrained model exist for this autoencoder
+        return os.path.isfile(os.path.join(CHECKPOINT_PATH, f"ViT.ckpt"))
 
 
-# ACTUAL TRAINING
-def train_model(*args, num_epochs=200, retrain=False, graph_progress=None, **kwargs):
+def train_model(*args, num_epochs=1, **kwargs):
+    # Create a trainer module with specified hyperparameters
     trainer = TrainerModule(*args, **kwargs)
-    if not trainer.checkpoint_exists() or retrain == True:
-        print("Training")
-        trainer.train_model(
-            train_loader,
-            val_loader,
-            num_epochs=num_epochs,
-            graph_progress=graph_progress,
-        )
-        trainer.load_model()
-    else:
-        print("Skipping training")
-        trainer.load_model(pretrained=True)
+    trainer.train_model(train_loader, val_loader)
+    trainer.load_model()
+    # Test trained model
     val_acc = trainer.eval_model(val_loader)
     test_acc = trainer.eval_model(test_loader)
     return trainer, {"val": val_acc, "test": test_acc}
@@ -357,11 +374,23 @@ model, results = train_model(
     num_patches=64,
     num_classes=10,
     dropout_prob=0.2,
-    lr=3e-4,
-    retrain=True,
-    num_epochs=10,
-    CHECKPOINT_PATH=CHECKPOINT_PATH,
+    lr=args.lr,
+    num_epochs=args.e,
     model=VisionTransformer,
-    graph_progress=10,
 )
 print("ViT results", results)
+
+imsize = 256
+loader = transforms.Compose([transforms.Resize(imsize)])
+
+
+def image_loader(image_name):
+    """load image, returns cuda tensor"""
+    image = Image.open(image_name)
+    image = jax.numpy.array(loader(image))
+    return image  # assumes that you're using GPU
+
+
+test_im = image_loader(
+    "/media/hdd/Datasets/boat/cruise ship/adventure-of-the-seas-cruise-ship-caribb-1218316.jpg"
+)

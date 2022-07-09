@@ -1,28 +1,29 @@
+from tqdm import tqdm
+from torch.utils.tensorboard import SummaryWriter
+from jax import random
+from flax.training import checkpoints, train_state
+import torch
+import optax
+import jax
+import seaborn as sns
+from matplotlib.colors import to_rgb
+import matplotlib
+from IPython.display import set_matplotlib_formats
 import os
-import random
 from collections import defaultdict
+from pathlib import Path
 
 import matplotlib.pyplot as plt
 import numpy as np
+import dill as pickle
 
 plt.set_cmap("cividis")
-from IPython.display import set_matplotlib_formats
 
 set_matplotlib_formats("svg", "pdf")
-import matplotlib
-from matplotlib.colors import to_rgb
 
 matplotlib.rcParams["lines.linewidth"] = 2.0
-import seaborn as sns
 
 sns.reset_orig()
-import jax
-import optax
-import torch
-from flax.training import checkpoints, train_state
-from jax import random
-from torch.utils.tensorboard import SummaryWriter
-from tqdm import tqdm
 
 
 def numpy_collate(batch):
@@ -58,3 +59,14 @@ def numpy_to_torch(array):
     tensor = tensor.permute(0, 3, 1, 2)
     return tensor
 
+
+def write_pickle(obj, fname):
+    fname = Path(fname)
+    with open(str(fname) + ".pkl", "wb+") as f:
+        pickle.dump(obj, f)
+
+
+def read_pickle(fname):
+    fname = Path(fname)
+    with open(str(fname) + ".pkl", "rb+") as f:
+        return pickle.load(f)

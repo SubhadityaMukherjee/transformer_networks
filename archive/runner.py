@@ -8,8 +8,14 @@ from torch import nn
 from torch.utils.data import DataLoader, Dataset
 from tqdm import tqdm
 
-from utils import (check_cuda, one_hot_encode, read_process_text, sample,
-                   textDatasetFromFile, train_model)
+from utils import (
+    check_cuda,
+    one_hot_encode,
+    read_process_text,
+    sample,
+    textDatasetFromFile,
+    train_model,
+)
 
 #%%
 parser = ap.ArgumentParser()
