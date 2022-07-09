@@ -16,6 +16,10 @@ from pathlib import Path
 import matplotlib.pyplot as plt
 import numpy as np
 import dill as pickle
+from typing import Sequence
+from torch.utils import data
+import jax.numpy as jnp
+import flax
 
 plt.set_cmap("cividis")
 
@@ -70,3 +74,24 @@ def read_pickle(fname):
     fname = Path(fname)
     with open(str(fname) + ".pkl", "rb+") as f:
         return pickle.load(f)
+
+
+def compute_weight_decay(params):
+    """Given a pytree of params, compute the summed $L2$ norm of the params.
+
+    NOTE: For our case with SGD, weight decay ~ L2 regularization. This won't always be the
+    case (ex: Adam vs. AdamW).
+    """
+    param_norm = 0
+
+    weight_decay_params_filter = flax.traverse_util.ModelParamTraversal(
+        lambda path, _: ("bias" not in path and "scale" not in path)
+    )
+
+    weight_decay_params = weight_decay_params_filter.iterate(params)
+
+    for p in weight_decay_params:
+        if p.ndim > 1:
+            param_norm += jnp.sum(p**2)
+
+    return param_norm

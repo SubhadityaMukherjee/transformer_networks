@@ -24,7 +24,7 @@ from jax import random
 from torchvision import transforms
 from torchvision.datasets import *
 from blocks.utils import *
-from blocks.attention import *
+from blocks.convnext import *
 from PIL import Image
 import argparse as ap
 
@@ -40,15 +40,15 @@ sns.reset_orig()
 # Argument setup
 ag = ap.ArgumentParser()
 ag.add_argument("-e", type=int, default=1, help="No of epochs")
-ag.add_argument("-lr", type=float, default=3e-4, help="No of epochs")
 ag.add_argument("-bs", type=int, default=64, help="Batch size")
+ag.add_argument("-lr", type=float, default=3e-4, help="No of epochs")
 ag.add_argument("-load", action="store_true", help="Load saved objects")
 args = ag.parse_args()
 
 # +
 # SETTING UP DEFAULTS
 DATASET_PATH = "/media/hdd/Datasets"
-CHECKPOINT_PATH = "saved_models/viTJax"
+CHECKPOINT_PATH = "saved_models/lent"
 valid_size = 0.2
 main_rng = random.PRNGKey(42)
 
@@ -110,7 +110,7 @@ train_sampler = SubsetRandomSampler(train_idx)
 valid_sampler = SubsetRandomSampler(valid_idx)
 # +
 # DATA LOADERS
-batch_size = 128
+batch_size = args.bs
 
 train_loader = data.DataLoader(
     train_dataset,
@@ -211,7 +211,7 @@ class TrainerModule:
         # Create empty model. Note: no parameters yet
         self.model = model(**model_hparams)
         # Prepare logging
-        self.log_dir = os.path.join(CHECKPOINT_PATH, "ViT/")
+        self.log_dir = os.path.join(CHECKPOINT_PATH, "lenet/")
         self.logger = SummaryWriter(log_dir=self.log_dir)
         # Create jitted training and eval functions
         self.create_functions()
@@ -220,40 +220,44 @@ class TrainerModule:
 
     def create_functions(self):
         # Function to calculate the classification loss and accuracy for a model
-        def calculate_loss(params, rng, batch, train):
+        def calculate_loss(params, batch_stats, batch, train):
             imgs, labels = batch
             labels_onehot = jax.nn.one_hot(labels, num_classes=self.model.num_classes)
-            rng, dropout_apply_rng = random.split(rng)
-            logits = self.model.apply(
-                {"params": params},
+            # Run model. During training, we need to update the BatchNorm statistics.
+            outs = self.model.apply(
+                {"params": params, "batch_stats": batch_stats},
                 imgs,
                 train=train,
-                rngs={"dropout": dropout_apply_rng},
+                mutable=["batch_stats"] if train else False,
             )
+            logits, new_model_state = outs if train else (outs, None)
             loss = optax.softmax_cross_entropy(logits, labels_onehot).mean()
             acc = (logits.argmax(axis=-1) == labels).mean()
-            return loss, (acc, rng)
+            return loss, (acc, new_model_state)
 
         # Training function
 
-        def train_step(state, rng, batch):
+        def train_step(state, batch):
             def loss_fn(params):
-                return calculate_loss(params, rng, batch, train=True)
+                return calculate_loss(params, state.batch_stats, batch, train=True)
 
             # Get loss, gradients for loss, and other outputs of loss function
-            (loss, (acc, rng)), grads = jax.value_and_grad(loss_fn, has_aux=True)(
-                state.params
-            )
+            ret, grads = jax.value_and_grad(loss_fn, has_aux=True)(state.params)
+            loss, acc, new_model_state = ret[0], *ret[1]
             # Update parameters and batch statistics
-            state = state.apply_gradients(grads=grads)
-            return state, rng, loss, acc
+            state = state.apply_gradients(
+                grads=grads, batch_stats=new_model_state["batch_stats"]
+            )
+            return state, loss, acc
 
         # Eval function
 
-        def eval_step(state, rng, batch):
+        def eval_step(state, batch):
             # Return the accuracy for a single batch
-            _, (acc, rng) = calculate_loss(state.params, rng, batch, train=False)
-            return rng, acc
+            _, (acc, _) = calculate_loss(
+                state.params, state.batch_stats, batch, train=False
+            )
+            return acc
 
         # jit for efficiency
         self.train_step = jax.jit(train_step)
@@ -262,9 +266,11 @@ class TrainerModule:
     def init_model(self, exmp_imgs):
         # Initialize model
         self.rng, init_rng, dropout_init_rng = random.split(self.rng, 3)
-        self.init_params = self.model.init(
-            {"params": init_rng, "dropout": dropout_init_rng}, exmp_imgs, train=True
-        )["params"]
+        variables = self.model.init(init_rng, exmp_imgs, train=True)
+        self.init_params, self.init_batch_stats = (
+            variables["params"],
+            variables["batch_stats"],
+        )
         self.state = None
 
     def init_optimizer(self, num_epochs, num_steps_per_epoch):
@@ -281,9 +287,12 @@ class TrainerModule:
             optax.adamw(lr_schedule, weight_decay=self.weight_decay),
         )
         # Initialize training state
-        self.state = train_state.TrainState.create(
+        self.state = TrainState.create(
             apply_fn=self.model.apply,
             params=self.init_params if self.state is None else self.state.params,
+            batch_stats=self.init_batch_stats
+            if self.state is None
+            else self.state.batch_stats,
             tx=optimizer,
         )
 
@@ -322,7 +331,7 @@ class TrainerModule:
         # Test model on all images of a data loader and return avg loss
         correct_class, count = 0, 0
         for batch in data_loader:
-            self.rng, acc = self.eval_step(self.state, self.rng, batch)
+            acc = self.eval_step(self.state, batch)
             correct_class += acc * batch[0].shape[0]
             count += batch[0].shape[0]
         eval_acc = (correct_class / count).item()
@@ -331,23 +340,28 @@ class TrainerModule:
     def save_model(self, step=0):
         # Save current model at certain training iteration
         checkpoints.save_checkpoint(
-            ckpt_dir=self.log_dir, target=self.state.params, step=step, overwrite=True
+            ckpt_dir=self.log_dir,
+            target={"params": self.state.params, "batch_stats": self.state.batch_stats},
+            step=step,
+            overwrite=True,
         )
 
     def load_model(self, pretrained=False):
         # Load model. We use different checkpoint for pretrained models
         if not pretrained:
-            params = checkpoints.restore_checkpoint(ckpt_dir=self.log_dir, target=None)
-        else:
-            params = checkpoints.restore_checkpoint(
-                ckpt_dir=os.path.join(CHECKPOINT_PATH, f"ViT.ckpt"), target=None
+            state_dict = checkpoints.restore_checkpoint(
+                ckpt_dir=self.log_dir, target=None
             )
-        self.state = train_state.TrainState.create(
+        else:
+            state_dict = checkpoints.restore_checkpoint(
+                ckpt_dir=os.path.join(CHECKPOINT_PATH, f"{self.model_name}.ckpt"),
+                target=None,
+            )
+        self.state = TrainState.create(
             apply_fn=self.model.apply,
-            params=params,
-            tx=self.state.tx
-            if self.state
-            else optax.adamw(self.lr),  # Default optimizer
+            params=state_dict["params"],
+            batch_stats=state_dict["batch_stats"],
+            tx=self.state.tx if self.state else optax.sgd(0.1),  # Default optimizer
         )
 
     def checkpoint_exists(self):
@@ -357,10 +371,8 @@ class TrainerModule:
 
 def train_model(*args, num_epochs=1, **kwargs):
     # Create a trainer module with specified hyperparameters
-
     trainer = TrainerModule(*args, num_epochs=num_epochs, **kwargs)
     trainer.train_model(train_loader, val_loader)
-    trainer.load_model()
     # Test trained model
     val_acc = trainer.eval_model(val_loader)
     test_acc = trainer.eval_model(test_loader)
@@ -369,18 +381,10 @@ def train_model(*args, num_epochs=1, **kwargs):
 
 model, results = train_model(
     exmp_imgs=next(iter(train_loader))[0],
-    embed_dim=256,
-    hidden_dim=512,
-    num_heads=8,
-    num_layers=6,
-    patch_size=4,
-    num_channels=3,
-    num_patches=64,
     num_classes=10,
-    dropout_prob=0.2,
     lr=args.lr,
     num_epochs=args.e,
-    model=VisionTransformer,
+    model=ResNet32,
 )
 print("ViT results", results)
 

@@ -237,7 +237,7 @@ class TrainerModule:
 
         # Training function
 
-        def train_step(state, rng, batch):
+        def train_step(state, batch):
             def loss_fn(params):
                 return calculate_loss(params, state.batch_stats, batch, train=True)
 
@@ -248,7 +248,7 @@ class TrainerModule:
             state = state.apply_gradients(
                 grads=grads, batch_stats=new_model_state["batch_stats"]
             )
-            return state, rng, loss, acc
+            return state, loss, acc
 
         # Eval function
 
@@ -302,7 +302,8 @@ class TrainerModule:
         self.init_optimizer(self.num_epochs, len(train_loader))
         # Track best eval accuracy
         best_eval = 0.0
-        for epoch_idx in tqdm(range(1, self.num_epochs + 1)):
+        bar = tqdm(range(1, self.num_epochs + 1))
+        for epoch_idx in bar:
             self.train_epoch(epoch=epoch_idx)
             if epoch_idx % 2 == 0:
                 eval_acc = self.eval_model(val_loader)
@@ -311,16 +312,17 @@ class TrainerModule:
                     best_eval = eval_acc
                     self.save_model(step=epoch_idx)
                 self.logger.flush()
+                bar.set_description(f"Val/acc: {eval_acc}")
 
     def train_epoch(self, epoch):
         # Train model for one epoch, and log avg loss and accuracy
         metrics = defaultdict(list)
-        for batch in tqdm(train_loader, desc="Training", leave=False):
-            self.state, self.rng, loss, acc = self.train_step(
-                self.state, self.rng, batch
-            )
+        bar = tqdm(train_loader, desc="Training", leave=False)
+        for batch in bar:
+            self.state, loss, acc = self.train_step(self.state, batch)
             metrics["loss"].append(loss)
             metrics["acc"].append(acc)
+            bar.set_description(f"loss : {loss} , acc : {acc}")
         for key in metrics:
             avg_val = np.stack(jax.device_get(metrics[key])).mean()
             self.logger.add_scalar("train/" + key, avg_val, global_step=epoch)
@@ -329,7 +331,7 @@ class TrainerModule:
         # Test model on all images of a data loader and return avg loss
         correct_class, count = 0, 0
         for batch in data_loader:
-            self.rng, acc = self.eval_step(self.state, batch)
+            acc = self.eval_step(self.state, batch)
             correct_class += acc * batch[0].shape[0]
             count += batch[0].shape[0]
         eval_acc = (correct_class / count).item()
@@ -369,7 +371,7 @@ class TrainerModule:
 
 def train_model(*args, num_epochs=1, **kwargs):
     # Create a trainer module with specified hyperparameters
-    trainer = TrainerModule(*args, **kwargs)
+    trainer = TrainerModule(*args, num_epochs=num_epochs, **kwargs)
     trainer.train_model(train_loader, val_loader)
     # Test trained model
     val_acc = trainer.eval_model(val_loader)
